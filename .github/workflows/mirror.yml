@@ -1,0 +1,78 @@
+name: Engelse site bijwerken
+
+# Volgt netvliesoperatie.info: elke 20 minuten kijken of daar een nieuwe commit is,
+# en zo ja de Engelse site opnieuw bouwen en publiceren op retinalsurgery.info.
+# Direct bijwerken: Actions > "Engelse site bijwerken" > Run workflow.
+
+on:
+  schedule:
+    - cron: '7,27,47 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ['.mirror-sha']
+
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new: ${{ steps.c.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: c
+        run: |
+          SHA=$(git ls-remote https://github.com/Netvlieschirurg/netvliesoperatie.info.git HEAD | cut -f1)
+          OLD=$(head -1 .mirror-sha 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$SHA" = "$OLD" ]; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+          # Houdt de planning actief: GitHub zet geplande taken uit na 60 dagen zonder commit.
+          LAST=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - LAST )) -gt $(( 40 * 86400 )) ]; then
+            date -u +%F > .heartbeat
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .heartbeat && git commit -m "Planning actief houden" && git push
+          fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.new == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Netvlieschirurg/netvliesoperatie.info
+          path: src
+      - run: python3 mirror.py src _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Bron-commit vastleggen
+        run: |
+          SHA=$(git -C src rev-parse HEAD)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --quiet --rebase origin main
+          echo "$SHA" > .mirror-sha
+          git add .mirror-sha
+          git diff --cached --quiet || { git commit -m "Engelse site bijgewerkt naar netvliesoperatie.info@${SHA:0:7}" && git push; }
