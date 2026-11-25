@@ -5,7 +5,7 @@ Gebruik: python3 mirror.py <bron> <doel>
 
 Kopieert index.html, img/ en fonts/ uit de bron en maakt index.html Engels:
 Engels als standaardtaal, de NL-knop gaat naar netvliesoperatie.info,
-en titel, beschrijving, canonical en merknaam (RetinalSurgery.Info) staan
+en titel, beschrijving, canonical en merknaam (Retinalsurgery.Info) staan
 al in het Engels in de HTML voor zoekmachines en linkvoorbeelden.
 
 Ontbreekt een onderdeel dat nodig is om de site Engels te laten werken,
@@ -20,7 +20,7 @@ from pathlib import Path
 
 EN = 'https://retinalsurgery.info/'
 NL = 'https://netvliesoperatie.info/'
-BRAND_NL, BRAND_EN = 'Netvliesoperatie.Info', 'RetinalSurgery.Info'
+BRAND_NL, BRAND_EN = 'Netvliesoperatie.Info', 'Retinalsurgery.Info'
 SKIP = {'.git', '.github', 'CNAME', 'README.md'}
 
 warnings = []
@@ -66,6 +66,14 @@ def main(src, dst):
             "      if (l === 'nl') { location.href = '" + NL + "?lang=nl' + location.hash; return; }\n"
             "      setLang(l);\n    }", required=True)
     s = rep(s, "var site = '" + BRAND_NL + "';", "var site = '" + BRAND_EN + "';")
+
+    # Woordmerk naast het logo (navigatie, verplicht) en in de footer; letter bij ontbrekend logo
+    wm = re.compile(r'Netvliesoperatie(<span style="color:\s*var\(--[a-z-]+\);">\.Info</span>)')
+    if not wm.search(s[:s.find('</nav>')]):
+        sys.exit('FOUT: woordmerk Netvliesoperatie.Info in de navigatie niet gevonden')
+    s = wm.sub(r'Retinalsurgery\1', s)
+    s = re.sub(r'(<span class="brand__logo--fallback"[^>]*>)N(</span>)', r'\1R\2', s)
+    s = s.replace('alt="' + BRAND_NL, 'alt="' + BRAND_EN)
 
     # Kop van het document: taal, canonical, Open Graph, hreflang
     h_end = s.find('</head>')
