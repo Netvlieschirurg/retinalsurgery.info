@@ -24,7 +24,7 @@ jobs:
     outputs:
       new: ${{ steps.c.outputs.new }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: c
         run: |
           SHA=$(git ls-remote https://github.com/Netvlieschirurg/netvliesoperatie.info.git HEAD | cut -f1)
@@ -43,9 +43,31 @@ jobs:
             git add .heartbeat && git commit -m "Planning actief houden" && git push
           fi
 
-  deploy:
+  build:
     needs: check
     if: needs.check.outputs.new == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.b.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: Netvlieschirurg/netvliesoperatie.info
+          path: src
+      - id: b
+        run: |
+          python3 mirror.py src _site
+          echo "sha=$(git -C src rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,21 +77,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: Netvlieschirurg/netvliesoperatie.info
-          path: src
-      - run: python3 mirror.py src _site
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v5
       - name: Bron-commit vastleggen
+        env:
+          SHA: ${{ needs.build.outputs.sha }}
         run: |
-          SHA=$(git -C src rev-parse HEAD)
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull --quiet --rebase origin main
